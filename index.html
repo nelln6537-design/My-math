@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Integration Calculator</title>
+    <!-- Loading Math.js for expression parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 768px) {
+            .container { grid-template-columns: 1fr; }
+        }
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        label {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #d2d2d7;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        .result-box {
+            margin-top: 10px;
+            padding: 16px;
+            background: #f5f5f7;
+            border-radius: 8px;
+            border-left: 4px solid #0066cc;
+        }
+        .result-val {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #0066cc;
+            margin-top: 4px;
+        }
+        .error {
+            color: #ff3b30;
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+        canvas {
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            background: #fafafa;
+            width: 100%;
+            height: 100%;
+            min-height: 400px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h2>Integration Calc</h2>
+        
+        <div class="input-group">
+            <label for="eq">Function f(x)</label>
+            <input type="text" id="eq" value="x^2 - 2x">
+            <div id="error-msg" class="error"></div>
+        </div>
+
+        <div class="input-group">
+            <label for="bound-a">Lower Bound (a)</label>
+            <input type="number" id="bound-a" value="0" step="0.5">
+        </div>
+
+        <div class="input-group">
+            <label for="bound-b">Upper Bound (b)</label>
+            <input type="number" id="bound-b" value="3" step="0.5">
+        </div>
+
+        <div class="result-box">
+            <label>Definite Integral Value:</label>
+            <div id="result" class="result-val">0.00</div>
+        </div>
+    </div>
+    
+    <div>
+        <canvas id="graphCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('graphCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI elements
+    const eqInput = document.getElementById('eq');
+    const boundAInput = document.getElementById('bound-a');
+    const boundBInput = document.getElementById('bound-b');
+    const resultDiv = document.getElementById('result');
+    const errorDiv = document.getElementById('error-msg');
+
+    // Graph scale properties
+    const xMin = -4, xMax = 6;
+    const yMin = -4, yMax = 6;
+
+    function resizeCanvas() {
+        // Set actual canvas size matching its layout size
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        calculateAndDraw();
+    }
+
+    // Map math coordinates to screen pixels
+    function toScreenX(x) {
+        return ((x - xMin) / (xMax - xMin)) * canvas.width;
+    }
+    function toScreenY(y) {
+        return canvas.height - ((y - yMin) / (yMax - yMin)) * canvas.height;
+    }
+
+    // Numerical integration via Simpson's Rule
+    function integrate(compiledExpr, a, b, steps = 1000) {
+        if (steps % 2 !== 0) steps++; // Must be even
+        const h = (b - a) / steps;
+        
+        let sum = compiledExpr.evaluate({x: a}) + compiledExpr.evaluate({x: b});
+        
+        for (let i = 1; i < steps; i++) {
+            const x = a + i * h;
+            const y = compiledExpr.evaluate({x: x});
+            sum += (i % 2 === 0 ? 2 : 4) * y;
+        }
+        return (h / 3) * sum;
+    }
+
+    function calculateAndDraw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        errorDiv.innerText = "";
+
+        const exprString = eqInput.value;
+        const a = parseFloat(boundAInput.value);
+        const b = parseFloat(boundBInput.value);
+
+        let compiled;
+        try {
+            compiled = math.compile(exprString);
+            // Test execution to catch mathematical context syntax errors early
+            compiled.evaluate({x: 1});
+        } catch (err) {
+            errorDiv.innerText = "Invalid function syntax.";
+            return;
+        }
+
+        // Calculate numerical definite integral
+        const areaResult = integrate(compiled, a, b);
+        resultDiv.innerText = isNaN(areaResult) ? "Error" : areaResult.toFixed(4);
+
+        // Draw Coordinate Grid Lines
+        ctx.strokeStyle = '#e5e5ea';
+        ctx.lineWidth = 1;
+        for(let x = Math.ceil(xMin); x <= xMax; x++) {
+            ctx.beginPath();
+            ctx.moveTo(toScreenX(x), 0);
+            ctx.lineTo(toScreenX(x), canvas.height);
+            ctx.stroke();
+        }
+        for(let y = Math.ceil(yMin); y <= yMax; y++) {
+            ctx.beginPath();
+            ctx.moveTo(0, toScreenY(y));
+            ctx.lineTo(canvas.width, toScreenY(y));
+            ctx.stroke();
+        }
+
+        // Draw Primary Axes (X and Y basis)
+        ctx.strokeStyle = '#8e8e93';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); // X Axis
+        ctx.moveTo(0, toScreenY(0)); ctx.lineTo(canvas.width, toScreenY(0));
+        ctx.stroke();
+        ctx.beginPath(); // Y Axis
+        ctx.moveTo(toScreenX(0), 0); ctx.lineTo(toScreenX(0), canvas.height);
+        ctx.stroke();
+
+        // Draw Shaded Integration Area
+        ctx.fillStyle = 'rgba(0, 102, 204, 0.25)';
+        ctx.beginPath();
+        ctx.moveTo(toScreenX(a), toScreenY(0));
+        
+        const shadeResolution = 200;
+        for (let i = 0; i <= shadeResolution; i++) {
+            const x = a + (i / shadeResolution) * (b - a);
+            try {
+                const y = compiled.evaluate({x: x});
+                ctx.lineTo(toScreenX(x), toScreenY(y));
+            } catch(e){}
+        }
+        ctx.lineTo(toScreenX(b), toScreenY(0));
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw Function Curve Path
+        ctx.strokeStyle = '#0066cc';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        
+        const curveResolution = 400;
+        let firstPoint = true;
+        for(let i = 0; i <= curveResolution; i++) {
+            const x = xMin + (i / curveResolution) * (xMax - xMin);
+            try {
+                const y = compiled.evaluate({x: x});
+                if (typeof y === 'number' && !isNaN(y) && isFinite(y)) {
+                    if (firstPoint) {
+                        ctx.moveTo(toScreenX(x), toScreenY(y));
+                        firstPoint = false;
+                    } else {
+                        ctx.lineTo(toScreenX(x), toScreenY(y));
+                    }
+                }
+            } catch(e) {}
+        }
+        ctx.stroke();
+    }
+
+    // Set up real-time sync listeners
+    [eqInput, boundAInput, boundBInput].forEach(element => {
+        element.addEventListener('input', calculateAndDraw);
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+    // Initial startup execution
+    resizeCanvas();
+</script>
+</body>
+</html>
